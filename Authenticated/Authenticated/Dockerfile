@@ -1,42 +1,19 @@
-# Base Image
-FROM python:3.6
+# Build from the repository root:
+# docker build -f Authenticated/Authenticated/Dockerfile .
+FROM python:3.13.17-slim
 
-# create and set working directory
-RUN mkdir /app
 WORKDIR /app
 
-# Add current directory code to working directory
-ADD . /app/
+ENV PYTHONUNBUFFERED=1 \
+    LANG=C.UTF-8 \
+    PORT=8000
 
-# set default environment variables
-ENV PYTHONUNBUFFERED 1
-ENV LANG C.UTF-8
-ENV DEBIAN_FRONTEND=noninteractive
+COPY Authenticated/Pipfile Authenticated/Pipfile.lock ./
+RUN pip install --no-cache-dir pipenv==2026.10.2 \
+    && pipenv verify \
+    && pipenv sync --system
 
-# set project environment variables
-# grab these via Python's os.environ
-# these are 100% optional here
-ENV PORT=8000
+COPY Authenticated/Authenticated/ ./
 
-# install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        tzdata \
-        python3-setuptools \
-        python3-dev \
-        python3-venv \
-        git \
-        python3-pip \
-        && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-
-# install environment dependencies
-RUN pip3 install --upgrade pip
-RUN pip3 install pipenv
-
-# install project dependencies
-RUN pipenv install --skip-lock --system --dev
-
-EXPOSE 8888
-CMD gunicorn Authenticated.wsgi:application --bind 0.0.0.0:8000:$PORT
+EXPOSE 8000
+CMD ["sh", "-c", "exec gunicorn Authenticated.wsgi:application --bind 0.0.0.0:${PORT}"]

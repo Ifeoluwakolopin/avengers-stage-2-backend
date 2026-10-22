@@ -6,10 +6,13 @@ verify_ssl = true
 [dev-packages]
 
 [packages]
-django = "*"
-gunicorn = "*"
-djangorestframework = "*"
-dj-rest-auth = {extras = ["with_social"],version = "*"}
+django = ">=5.2.18,<5.3"
+gunicorn = "==26.2.0"
+djangorestframework = "==3.18.3"
+dj-rest-auth = {extras = ["with-social"], version = "==7.2.0"}
+django-allauth = {extras = ["socialaccount", "openid"], version = "==65.20.1"}
+djangorestframework-simplejwt = "==5.5.1"
+requests-oauthlib = "==2.0.0"
 
 [requires]
-python_version = "3.8"
+python_version = "3.13"

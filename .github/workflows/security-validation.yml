@@ -1,0 +1,112 @@
+name: Security dependency validation
+
+on:
+  push:
+    branches: [python-branch, python/copilot-security-20261022]
+  pull_request:
+    branches: [python-branch]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: github.repository == 'Ifeoluwakolopin/avengers-stage-2-backend'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      PIP_NO_CACHE_DIR: '1'
+      PIPENV_VENV_IN_PROJECT: '1'
+      PIPENV_IGNORE_VIRTUALENVS: '1'
+      PIPENV_DONT_LOAD_ENV: '1'
+      PIPENV_NOSPIN: '1'
+    defaults:
+      run:
+        working-directory: Authenticated
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13.17'
+      - name: Generate genuine Pipenv lock
+        run: |
+          python -m pip install pipenv==2026.10.2
+          pipenv lock --clear
+          pipenv verify
+          pipenv sync
+          pipenv run python -m pip check
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pipenv-lock
+          path: Authenticated/Pipfile.lock
+          if-no-files-found: error
+          retention-days: 7
+      - name: Framework, schema and isolated authentication smoke
+        run: |
+          cd Authenticated
+          pipenv run python - <<'PY'
+          import os
+          import sys
+          import types
+          os.environ["DJANGO_SETTINGS_MODULE"] = "Authenticated.settings"
+          from django.conf import settings
+          settings.SECRET_KEY = "isolated-hosted-validation-only-not-a-deployment-secret"
+          settings.ALLOWED_HOSTS = ["testserver", "localhost"]
+          settings.DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
+          settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+          import django
+          django.setup()
+          from django.core.management import call_command
+          call_command("check")
+          call_command("makemigrations", check=True, dry_run=True)
+          call_command("migrate", interactive=False, verbosity=0)
+          from django.contrib.auth import authenticate, get_user_model
+          from django.test import Client
+          from django.urls import include, path, resolve
+          import Authenticated.asgi
+          import Authenticated.wsgi
+          import dj_rest_auth.registration.serializers
+          import allauth.socialaccount.providers.oauth2.client
+          import openid
+          import requests_oauthlib
+          from rest_framework.settings import api_settings
+          for backend in api_settings.DEFAULT_AUTHENTICATION_CLASSES:
+              backend()
+          assert resolve("/admin/").url_name == "index"
+          client = Client()
+          assert client.get("/admin/login/").status_code == 200
+          password = "Isolated-CI-Auth-4387!"
+          user = get_user_model().objects.create_user(
+              username="smoke", email="smoke@example.invalid", password=password
+          )
+          from allauth.account.models import EmailAddress
+          EmailAddress.objects.create(user=user, email=user.email, primary=True, verified=True)
+          assert authenticate(email=user.email, password=password) == user
+          # Exercise configured library flows without publishing new project routes.
+          module = types.ModuleType("isolated_auth_urls")
+          module.urlpatterns = [
+              path("auth/", include("dj_rest_auth.urls")),
+              path("registration/", include("dj_rest_auth.registration.urls")),
+          ]
+          sys.modules[module.__name__] = module
+          from django.test import override_settings
+          with override_settings(ROOT_URLCONF=module.__name__):
+              result = client.post("/auth/login/", {"email": user.email, "password": password})
+              assert result.status_code == 200, result.content
+              assert result.json()["access"]
+              assert result.cookies["authenticated"].value
+              assert client.get("/auth/user/").status_code == 200
+              assert client.post("/auth/logout/").status_code == 200
+              registered = client.post("/registration/", {
+                  "username": "registered", "email": "registered@example.invalid",
+                  "password1": password, "password2": password,
+              })
+              assert registered.status_code == 201, registered.content
+              reset = client.post("/auth/password/reset/", {"email": user.email})
+              assert reset.status_code == 200, reset.content
+          from django.core import mail
+          assert mail.outbox
+          print("Framework, migrations, admin, email login, registration, JWT cookie, session and reset smoke passed")
+          PY
