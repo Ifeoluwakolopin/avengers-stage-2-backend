@@ -56,6 +56,7 @@ jobs:
           call_command("makemigrations", check=True, dry_run=True)
           call_command("migrate", interactive=False, verbosity=0)
           from django.contrib.auth import authenticate, get_user_model
+          from dj_rest_auth.views import PasswordResetConfirmView
           from django.test import Client
           from django.urls import include, path, resolve
           import Authenticated.asgi
@@ -82,6 +83,11 @@ jobs:
           module.urlpatterns = [
               path("auth/", include("dj_rest_auth.urls")),
               path("registration/", include("dj_rest_auth.registration.urls")),
+              path(
+                  "password/reset/confirm/<uidb64>/<token>/",
+                  PasswordResetConfirmView.as_view(),
+                  name="password_reset_confirm",
+              ),
           ]
           sys.modules[module.__name__] = module
           from django.test import override_settings
@@ -108,3 +114,8 @@ jobs:
           assert mail.outbox
           print("Framework, migrations, admin, email login, registration, JWT cookie, session and reset smoke passed")
           PY
+      - name: Build and check the locked container without publishing
+        working-directory: .
+        run: |
+          docker build --tag avengers-security-validation --file Authenticated/Authenticated/Dockerfile .
+          docker run --rm --network none avengers-security-validation gunicorn --check-config Authenticated.wsgi:application
