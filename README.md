@@ -14,11 +14,35 @@ This project is a dockerized micro-service for authentication written in Django 
 #### Note: This README will be updated as often as possible to ensure we know how to set things up
 
 ## To set it all up for the first time.
+* Use Python **3.13** (validated on **3.13.17**) and Pipenv **2026.10.2**.
+  Python 3.6/3.8 and Django 3.0 are end-of-life; this project now uses the
+  supported Django **5.2 LTS** line and current DRF, dj-rest-auth and allauth.
+  Existing SQLite data and the admin-only URL configuration are retained.
+  Email/username registration, email login, session/token/JWT authentication,
+  the `authenticated` JWT cookie, and social/OpenID support remain configured;
+  no new public authentication endpoints are enabled.
 * Fork the repo and then clone to your machine.
 * cd into the project directory with `cd Authenticated`
 * Install **pipenv** (We're using `pipenv` as our virtual environment)using `pip install pipenv`.
 * Enable the virtual environment by typing `pipenv shell`.
+* Configure a persistent, randomly generated `SECRET_KEY` using your deployment's
+  secret store. It is required independently of `DEBUG`; the old `DEBUG=1`
+  signing-key fallback is not supported. For a disposable local session, generate
+  one with `export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(50))')"`.
+  Debug mode defaults off and session, CSRF and JWT cookies default to HTTPS-only.
+  Use `DEBUG=1` only for local HTTP development, never a public deployment.
 * Install dependencies with `pipenv sync`
+* After intentionally changing the Pipfile, run `pipenv lock` and commit its
+  generated lockfile. Normal installs must use `pipenv verify && pipenv sync`;
+  do not bypass the lock with `--skip-lock`.
+
+The Docker build uses the repository root as its context:
+`docker build -f Authenticated/Authenticated/Dockerfile .`.
+It installs the same verified lockfile and defaults to port 8000.
+Hosted CI checks the framework, migrations, admin, configured auth backends
+and JWT/session/email flows against an isolated database and in-memory mail.
+Production TLS termination, allowed hosts and secret storage still require
+deployment configuration; CI does not deploy or contact external authentication services.
 
 ## To get Django part up and running if you just completed the above section
 I am assuming you're in the outer **Authenticated** directory and you've enabled the virtual environment.
