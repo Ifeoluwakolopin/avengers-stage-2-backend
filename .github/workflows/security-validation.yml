@@ -20,6 +20,8 @@ jobs:
       PIPENV_IGNORE_VIRTUALENVS: '1'
       PIPENV_DONT_LOAD_ENV: '1'
       PIPENV_NOSPIN: '1'
+      SECRET_KEY: isolated-hosted-validation-only-not-a-deployment-secret
+      DEBUG: '0'
     defaults:
       run:
         working-directory: Authenticated
@@ -41,11 +43,20 @@ jobs:
           cd Authenticated
           pipenv run python - <<'PY'
           import os
+          import subprocess
           import sys
           import types
           os.environ["DJANGO_SETTINGS_MODULE"] = "Authenticated.settings"
           from django.conf import settings
-          settings.SECRET_KEY = "isolated-hosted-validation-only-not-a-deployment-secret"
+          assert not settings.DEBUG
+          assert settings.SECRET_KEY == os.environ["SECRET_KEY"]
+          without_secret = dict(os.environ)
+          del without_secret["SECRET_KEY"]
+          rejected = subprocess.run(
+              [sys.executable, "-c", "import django; django.setup()"],
+              env=without_secret, capture_output=True, text=True,
+          )
+          assert rejected.returncode != 0 and "ImproperlyConfigured" in rejected.stderr
           settings.ALLOWED_HOSTS = ["testserver", "localhost"]
           settings.DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
           settings.EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
@@ -96,6 +107,7 @@ jobs:
               assert result.status_code == 200, result.content
               assert result.json()["access"]
               assert result.cookies["authenticated"].value
+              assert result.cookies["authenticated"]["secure"]
               assert "_auth_user_id" in client.session
               del client.cookies[settings.SESSION_COOKIE_NAME]
               assert client.get("/auth/user/").status_code == 200
@@ -118,4 +130,6 @@ jobs:
         working-directory: .
         run: |
           docker build --tag avengers-security-validation --file Authenticated/Authenticated/Dockerfile .
-          docker run --rm --network none avengers-security-validation gunicorn --check-config Authenticated.wsgi:application
+          docker run --rm --network none \
+            --env SECRET_KEY=isolated-hosted-validation-only-not-a-deployment-secret \
+            avengers-security-validation gunicorn --check-config Authenticated.wsgi:application

@@ -25,6 +25,12 @@ This project is a dockerized micro-service for authentication written in Django 
 * cd into the project directory with `cd Authenticated`
 * Install **pipenv** (We're using `pipenv` as our virtual environment)using `pip install pipenv`.
 * Enable the virtual environment by typing `pipenv shell`.
+* Configure a persistent, randomly generated `SECRET_KEY` using your deployment's
+  secret store. It is required independently of `DEBUG`; the old `DEBUG=1`
+  signing-key fallback is not supported. For a disposable local session, generate
+  one with `export SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(50))')"`.
+  Debug mode defaults off and session, CSRF and JWT cookies default to HTTPS-only.
+  Use `DEBUG=1` only for local HTTP development, never a public deployment.
 * Install dependencies with `pipenv sync`
 * After intentionally changing the Pipfile, run `pipenv lock` and commit its
   generated lockfile. Normal installs must use `pipenv verify && pipenv sync`;
@@ -35,8 +41,8 @@ The Docker build uses the repository root as its context:
 It installs the same verified lockfile and defaults to port 8000.
 Hosted CI checks the framework, migrations, admin, configured auth backends
 and JWT/session/email flows against an isolated database and in-memory mail.
-The example's debug/secret configuration still requires a separate production
-deployment review; CI does not deploy or contact external authentication services.
+Production TLS termination, allowed hosts and secret storage still require
+deployment configuration; CI does not deploy or contact external authentication services.
 
 ## To get Django part up and running if you just completed the above section
 I am assuming you're in the outer **Authenticated** directory and you've enabled the virtual environment.
